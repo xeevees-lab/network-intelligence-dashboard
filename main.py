@@ -7,6 +7,7 @@ from datetime import datetime
 from scanner import full_scan, is_valid_ip
 from fastapi.responses import FileResponse
 from fastapi.responses import StreamingResponse
+from fastapi.concurrency import run_in_threadpool
 import csv
 import io
 
@@ -28,18 +29,62 @@ app.add_middleware(
 
 RESULTS_FILE  ='results.json'
 
+
+def _results_path():
+    """Return a safe file path to store results.
+
+    If `RESULTS_FILE` is a directory (existing or created), use
+    results.json inside that directory. Otherwise use the path as-is.
+    """
+    if os.path.isdir(RESULTS_FILE):
+        path = os.path.join(RESULTS_FILE, 'results.json')
+    else:
+        path = RESULTS_FILE
+
+    # Ensure target directory exists
+    dirn = os.path.dirname(path) or '.'
+    if not os.path.exists(dirn):
+        os.makedirs(dirn, exist_ok=True)
+    return path
+
+
+FALLBACK_RESULTS = 'results_fallback.json'
+
 def load_history():
-    if os.path.exists(RESULTS_FILE):
-        with open(RESULTS_FILE, 'r') as f:
-            return json.load(f)
+    path = _results_path()
+    # Try primary path first
+    try:
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                return json.load(f)
+    except (json.JSONDecodeError, IsADirectoryError, PermissionError):
+        pass
+
+    # Fallback to local fallback file
+    if os.path.exists(FALLBACK_RESULTS):
+        try:
+            with open(FALLBACK_RESULTS, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IsADirectoryError, PermissionError):
+            return []
     return []
 
 def save_result(result):
+    path = _results_path()
     history = load_history()
     result['timestamp'] = datetime.now().isoformat()
     history.append(result)
-    with open (RESULTS_FILE, 'w') as f:
-        json.dump(history, f, indent=2)
+    try:
+        with open(path, 'w') as f:
+            json.dump(history, f, indent=2)
+    except PermissionError:
+        # Fallback to a local file the process can write to
+        try:
+            with open(FALLBACK_RESULTS, 'w') as f:
+                json.dump(history, f, indent=2)
+        except PermissionError:
+            # If we still can't write, raise an HTTP-friendly error
+            raise
 
 @app.get('/')
 def read_root():
@@ -50,10 +95,11 @@ def health_check():
     return {'status': 'ok', 'message': 'Network Dashboard is running'}
 
 @app.get('/scan')
-def scan_ip(ip: str, start_port: int =1, end_port: int = 1024):
+async def scan_ip(ip: str, start_port: int = 1, end_port: int = 1024):
     if not is_valid_ip(ip):
         raise HTTPException(status_code=400, detail='Invalid IP address')
-    result = full_scan(ip, port_range=(start_port, end_port))
+    # Run the potentially blocking full_scan in a threadpool
+    result = await run_in_threadpool(full_scan, ip, (start_port, end_port))
     save_result(result)
     return result
 
@@ -75,12 +121,12 @@ def get_stats():
         if 'country' in geo:
             countries.append(geo['country'])
 
-    #Count port frequencies
+    # Count port frequencies
     port_counts = {}
     for p in all_ports:
         port_counts[p] = port_counts.get(p, 0) + 1
 
-    top_ports = sorted(port_counts, key=lambda x: x[1], reverse=True)[:5]
+    top_ports = [p for p, _ in sorted(port_counts.items(), key=lambda x: x[1], reverse=True)[:5]]
 
     return {
         'total_scans': len(history),
@@ -100,7 +146,7 @@ def export_csv():
 
     # Data rows
     for scan in history:
-        geo = scan.get('geo', {})
+        geo = scan.get('geo_info', {})
         writer.writerow([
             scan.get('ip', ''),
             ', '.join(str(p) for p in scan.get('open_ports', [])),

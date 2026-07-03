@@ -104,11 +104,11 @@
                 <button onclick="runScan()">Scan</button>
             </div>
             <div id="status"></div>
-            <div class="results"></div>
-            <div class="history"></div>
+            <div id="results" class="results"></div>
+            <div id="history" class="history"></div>
         </div>
         <script>
-            const Api = 'http://localhost:8000';
+            const API = 'http://localhost:8000';
 
             async function runScan() {
                 const ip = document.getElementById('ip-input').value.trim();
@@ -118,7 +118,7 @@
                     showStatus('Please enter an IP address', 'error');
                     return;
                 }
-                showStatus('Scanning' + ip + '...this may take a minute', 'loading');
+                showStatus('Scanning ' + ip + '...this may take a minute', 'loading');
                 document.getElementById('results').innerHTML = '';
 
                 try {
@@ -148,7 +148,7 @@
             function renderResults(data) {
                 const el = document.getElementById('results');
                 const ports = data.open_ports || [];
-                const geo = data.geo || {};
+                const geo = data.geo_info || {};
 
                 const portsHtml = ports.length > 0 ? ports.map(p => `<span class="port-badge">${p}</span>`).join('') : '<span style="color:#6b7280">No open ports found</span>';
 
@@ -178,15 +178,15 @@
 
             function renderHistory(history) {
                 const el = document.getElementById('history');
-                if (!history.length) { el.innerHTML = ''; return; }
+                if (!history || !history.length) { el.innerHTML = ''; return; }
 
                 const rows = history.slice().reverse().map(item => 
                 `
                 <tr>
                     <td>${item.ip}</td>
                     <td>${(item.open_ports || []).join(', ') || 'none'}</td>
-                    <td>${item.geo?.country || '?'}</td>
-                    <td style='color:#6b7280;font-size:0.8rem'>${item.timestamp?.slice(0,19) || ''}</td>
+                    <td>${(item.geo_info && item.geo_info.country) || '?'}</td>
+                    <td style="color:#6b7280;font-size:0.8rem">${(item.timestamp || '').slice(0,19)}</td>
                 </tr>
                 `).join('');
 
@@ -195,12 +195,13 @@
                         <h2>Scan History</h2>
                         <table style="width:100%; border-collapse: collapse; font-size: 0.9rem;">
                             <thead>
-                                <tr style="color:#89499e'>
-                                    <th style="text-align:left; padding: 4px 8px>IP</th>
-                                    <th style="text-align:left; padding: 4px 8px>Open Ports</th>
-                                    <th style="text-align:left; padding: 4px 8px>Country</th>
-                                    <th style="text-align:left; padding: 4px 8px>Time</th>
-                                </tr></thead>
+                                <tr style="color:#89499e">
+                                    <th style="text-align:left; padding: 4px 8px">IP</th>
+                                    <th style="text-align:left; padding: 4px 8px">Open Ports</th>
+                                    <th style="text-align:left; padding: 4px 8px">Country</th>
+                                    <th style="text-align:left; padding: 4px 8px">Time</th>
+                                </tr>
+                            </thead>
                             <tbody>${rows}</tbody>
                         </table>
                     </div>
