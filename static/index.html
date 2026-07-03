@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang='en'>
+    <head>
+        <meta charset="'UTF-8">
+        <meta name='viewport' content="width=device-width, initial-scale=1.0">
+        <title>Network Intelligence Dashboard</title>
+        <style>
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+            body {
+                background: #0d1117;
+                color: #e6edf3;
+                font-family: 'Courier New', monospace;
+                padding: 2rem;
+            }
+            h1 {
+                color: #58a6ff;
+                margin-bottom: 1.5rem;
+                font-size: 1.6rem;
+            }
+            .container {
+                max-width: 900px;
+                margin: 0 auto;
+            }
+            .scan-form { display: flex;
+                gap: 0.5rem;
+                margin-bottom: 1.5rem;
+                flex-wrap: wrap;
+            }
+            .scan-form input {
+                background: #161b22;
+                border: 1px solid #30363d;
+                color: #e6edf3;
+                padding: 0.5rem 0.75rem;
+                border-radius: 4px;
+                 font-family: inherit;
+            }
+            #ip-input {
+                flex: 1;
+                min-width: 200px;
+            }
+            button {
+                background: #1f6feb;
+                color: white;
+                border: none;
+                padding: 0.5rem 1.25rem;
+                border-radius: 4px;
+                cursor: pointer;
+                font-family: inherit;
+            }
+            button:hover {
+                background: #388bfd;
+            }
+            .card {
+                background: #161b22;
+                border: 1px solid #30363d;
+                border-radius: 6px;
+                padding: 1rem 1.25rem;
+                margin-bottom: 1rem;
+            }
+            .port-badge {
+                display: inline-block;
+                background: #1f6feb22;
+                border: 1px solid #1f6feb;
+                color: #58a6ff;
+                padding: 2px 8px;
+                border-radius: 4px;
+                margin: 2px;
+                font-size: 0.85rem;
+            }
+            .status {
+                padding: 0.5rem;
+                margin-bottom: 1rem;
+                border-radius: 4px;
+            }
+            .loading {
+                background: #1f2937;
+                color: #9ca3af;
+            }
+            .error {
+                background: #450a0a;
+                color: #fca5a5;
+            }
+            h2 {
+                color: #8b949e;
+                font-size: 1rem;
+                margin-bottom: 0.75rem;
+                text-transform: uppercase;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>
+                Network Intelligence Dashboard
+            </h1>
+            <div class="scan-form">
+                <input type="text" id="ip-input" placeholder="Enter IP address (e.g. 8.8.8.8)">
+                <input type="number" id="start-port" value="1" min="1" max="65535">
+                <input type='number' id='end-port' value='1024' min='1' max='65535'>
+                <button onclick="runScan()">Scan</button>
+            </div>
+            <div id="status"></div>
+            <div class="results"></div>
+            <div class="history"></div>
+        </div>
+        <script>
+            const Api = 'http://localhost:8000';
+
+            async function runScan() {
+                const ip = document.getElementById('ip-input').value.trim();
+                const startPort = document.getElementById('start-port').value;
+                const endPort = document.getElementById('end-port').value;
+                if(!ip) {
+                    showStatus('Please enter an IP address', 'error');
+                    return;
+                }
+                showStatus('Scanning' + ip + '...this may take a minute', 'loading');
+                document.getElementById('results').innerHTML = '';
+
+                try {
+                    const url = `${API}/scan?ip=${ip}&start_port=${startPort}&end_port=${endPort}`;
+                    const response = await fetch(url);
+                    const data = await response.json();
+
+                    if(!response.ok) {
+                        showStatus('Error: ' + data.detail, 'error');
+                        return;
+                    }
+
+                    renderResults(data);
+                    loadHistory();
+                    showStatus('', '');
+                } catch (err) {
+                    showStatus('Could not connect to the API. Is it running?', 'error');
+                }
+            }
+
+            function showStatus(msg,type) {
+                const el = document.getElementById('status');
+                el.textContent = msg;
+                el.className = 'status ' + type;
+            }
+
+            function renderResults(data) {
+                const el = document.getElementById('results');
+                const ports = data.open_ports || [];
+                const geo = data.geo || {};
+
+                const portsHtml = ports.length > 0 ? ports.map(p => `<span class="port-badge">${p}</span>`).join('') : '<span style="color:#6b7280">No open ports found</span>';
+
+                el.innerHTML = `
+                    <div class="card">
+                        <h2>Scan Results — ${data.ip}</h2>
+                        <p><strong>Open Ports:</strong> </p>
+                        <div style="margin: 0.5rem 0">${portsHtml}</div>
+                        <hr style="border-color: #30363d; margin: 0.75rem 0">
+                        <p><strong>Location:</strong> ${geo.city ||  '?'}, ${geo.country || '?'}</p>
+                        <p><strong>ISP:</strong> ${geo.isp || '?'}</p>
+                        <p><strong>Timezone:</strong> ${geo.timezone || '?'}</p>
+                        <p><strong>Coordinates:</strong> ${geo.lat || '?'}, ${geo.lon || '?'}</p>
+                    </div>
+                `;
+            }
+
+            async function loadHistory() {
+                try {
+                    const response = await fetch(`${API}/history`);
+                    const data = await response.json();
+                    renderHistory(data);
+                } catch (err) {
+                    console.log('Could not load history');
+                }
+            }
+
+            function renderHistory(history) {
+                const el = document.getElementById('history');
+                if (!history.length) { el.innerHTML = ''; return; }
+
+                const rows = history.slice().reverse().map(item => 
+                `
+                <tr>
+                    <td>${item.ip}</td>
+                    <td>${(item.open_ports || []).join(', ') || 'none'}</td>
+                    <td>${item.geo?.country || '?'}</td>
+                    <td style='color:#6b7280;font-size:0.8rem'>${item.timestamp?.slice(0,19) || ''}</td>
+                </tr>
+                `).join('');
+
+                el.innerHTML = `
+                    <div class="card">
+                        <h2>Scan History</h2>
+                        <table style="width:100%; border-collapse: collapse; font-size: 0.9rem;">
+                            <thead>
+                                <tr style="color:#89499e'>
+                                    <th style="text-align:left; padding: 4px 8px>IP</th>
+                                    <th style="text-align:left; padding: 4px 8px>Open Ports</th>
+                                    <th style="text-align:left; padding: 4px 8px>Country</th>
+                                    <th style="text-align:left; padding: 4px 8px>Time</th>
+                                </tr></thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                `;
+            }
+        </script>
+    </body>
+</html>

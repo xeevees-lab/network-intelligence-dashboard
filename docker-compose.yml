@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - '8080:8000'
+    volumes:
+      - ./results.json:/app/results.json
+    restart: unless-stopped
