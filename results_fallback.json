@@ -73,5 +73,22 @@
       "timezone": "Asia/Kolkata"
     },
     "timestamp": "2026-07-03T16:00:33.137150"
+  },
+  {
+    "ip": "8.8.8.8",
+    "open_ports": [
+      53,
+      443,
+      853
+    ],
+    "geo_info": {
+      "country": "United States",
+      "city": "Ashburn",
+      "isp": "Google LLC",
+      "lat": 39.03,
+      "lon": -77.5,
+      "timezone": "America/New_York"
+    },
+    "timestamp": "2026-07-03T16:05:57.556190"
   }
 ]
