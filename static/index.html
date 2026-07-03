@@ -108,7 +108,9 @@
             <div id="history" class="history"></div>
         </div>
         <script>
-            const API = 'http://localhost:8000';
+            const API = window.location.origin && window.location.origin !== 'null'
+                ? window.location.origin
+                : 'http://localhost:8080';
 
             async function runScan() {
                 const ip = document.getElementById('ip-input').value.trim();
